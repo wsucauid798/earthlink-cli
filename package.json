@@ -1,0 +1,29 @@
+{
+  "name": "earthlink-cli",
+  "version": "0.0.1",
+  "description": "Production CLI frontend for EarthLink world server",
+  "private": true,
+  "bin": {
+    "earthlink": "bin/earthlink.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "bundle": "esbuild src/index.ts --bundle --platform=node --format=cjs --target=node20 --outfile=bin/earthlink.js",
+    "run": "tsx src/index.ts",
+    "start": "node dist/index.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "commander": "^12.1.0",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.4",
+    "@types/ws": "^8.5.14",
+    "esbuild": "^0.25.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3"
+  }
+}
