@@ -6,11 +6,22 @@ export interface ApiVersion {
 
 export interface WorldTime {
   current_time: string;
+  local_time?: string;
   tick_count: number;
   date: string;
   hour: number;
   minute: number;
   season: string;
+  timezone?: string;
+  timezone_abbr?: string;
+  utc_offset?: string;
+}
+
+export interface EarthProxyStatus {
+  adapters: number;
+  total_resolves: number;
+  ttl_seconds: number;
+  backend: string;
 }
 
 export interface WorldStateSummary {
@@ -20,6 +31,9 @@ export interface WorldStateSummary {
   connection_count: number;
   weather_stations: number;
   weather: Record<string, unknown>;
+  agent_count: number;
+  agents: AgentSummary[];
+  earth_proxy: EarthProxyStatus;
 }
 
 export interface Location {
@@ -68,6 +82,51 @@ export interface Astronomy {
   sunrise: string | null;
   sunset: string | null;
   day_length_hours: number | null;
-  moon_phase: number | null;
   is_daylight: boolean;
+}
+
+// --- Agents ---
+
+export interface AgentSummary {
+  id: string;
+  name: string;
+  location_id: number;
+  location_name: string | null;
+  last_action: string;
+  energy: number;
+  knowledge_score: number;
+  visited_locations: number;
+  policy: string;
+  last_reward: number;
+  goal: Record<string, unknown> | null;
+}
+
+export interface AgentTopLocation {
+  location_id: number;
+  location_name: string | null;
+  score: number;
+  visits: number;
+}
+
+export interface AgentVisitedPlace {
+  location_id: number;
+  location_name: string | null;
+  visits: number;
+}
+
+export interface AgentDetail extends AgentSummary {
+  top_locations: AgentTopLocation[];
+  known_conditions: Record<string, number>;
+  visited_places: AgentVisitedPlace[];
+}
+
+export interface AgentAnswer {
+  agent_id: string;
+  question: string;
+  answer: string;
+  visited_places: AgentVisitedPlace[];
+  retrieval_backend: string;
+  answer_confidence: number;
+  answer_certainty: string;
+  supporting_facts: Record<string, unknown>[];
 }

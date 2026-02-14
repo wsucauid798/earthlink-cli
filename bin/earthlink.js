@@ -6736,6 +6736,16 @@ var EarthlinkApiClient = class _EarthlinkApiClient {
   async getAstronomy(locationId) {
     return this.request(`/api/astronomy/${locationId}`);
   }
+  async listAgents() {
+    return this.request("/api/agents");
+  }
+  async getAgent(agentId) {
+    return this.request(`/api/agents/${encodeURIComponent(agentId)}`);
+  }
+  async askAgent(agentId, question) {
+    const query = new URLSearchParams({ question });
+    return this.request(`/api/agents/${encodeURIComponent(agentId)}/ask?${query.toString()}`);
+  }
   async request(endpoint, init) {
     for (let attempt = 1; attempt <= this.startupRetryCount; attempt += 1) {
       const controller = new AbortController();
@@ -6830,7 +6840,13 @@ function printOutput(payload, asJson) {
 `);
     process.stdout.write(`Current Time:     ${payload.time.current_time}
 `);
+    if (payload.time.local_time) {
+      process.stdout.write(`Local Time:       ${payload.time.local_time} ${payload.time.timezone_abbr ?? ""}
+`);
+    }
     process.stdout.write(`Tick:             ${payload.time.tick_count}
+`);
+    process.stdout.write(`Season:           ${payload.time.season}
 `);
     process.stdout.write(`Locations:        ${payload.location_count.toLocaleString()}
 `);
@@ -6838,6 +6854,12 @@ function printOutput(payload, asJson) {
 `);
     process.stdout.write(`Weather Stations: ${payload.weather_stations.toLocaleString()}
 `);
+    process.stdout.write(`Agents:           ${payload.agent_count ?? 0}
+`);
+    if (payload.earth_proxy) {
+      process.stdout.write(`Earth Proxy:      ${payload.earth_proxy.adapters} adapters, ${payload.earth_proxy.backend} (TTL ${payload.earth_proxy.ttl_seconds}s, ${payload.earth_proxy.total_resolves} resolves)
+`);
+    }
     return;
   }
   if (isLocation(payload)) {
@@ -6883,6 +6905,82 @@ function printOutput(payload, asJson) {
     console.table([payload]);
     return;
   }
+  if (isAgentAnswer(payload)) {
+    process.stdout.write(`
+Agent: ${payload.agent_id}
+`);
+    process.stdout.write(`Question: ${payload.question}
+`);
+    process.stdout.write(`Answer: ${payload.answer}
+`);
+    process.stdout.write(`Confidence: ${(payload.answer_confidence * 100).toFixed(0)}% (${payload.answer_certainty})
+`);
+    process.stdout.write(`Retrieval: ${payload.retrieval_backend}
+`);
+    if (payload.supporting_facts && payload.supporting_facts.length > 0) {
+      process.stdout.write(`Supporting facts: ${payload.supporting_facts.length}
+`);
+    }
+    return;
+  }
+  if (isAgentDetail(payload)) {
+    process.stdout.write(`
+Agent: ${payload.name} (${payload.id})
+`);
+    process.stdout.write("\u2500".repeat(40) + "\n");
+    process.stdout.write(`Location:         ${payload.location_name ?? payload.location_id}
+`);
+    process.stdout.write(`Energy:           ${(payload.energy * 100).toFixed(0)}%
+`);
+    process.stdout.write(`Knowledge Score:  ${payload.knowledge_score.toFixed(2)}
+`);
+    process.stdout.write(`Visited Places:   ${payload.visited_locations}
+`);
+    process.stdout.write(`Last Action:      ${payload.last_action}
+`);
+    process.stdout.write(`Last Reward:      ${payload.last_reward.toFixed(4)}
+`);
+    process.stdout.write(`Policy:           ${payload.policy}
+`);
+    if (payload.goal) {
+      process.stdout.write(`Goal:             ${payload.goal.type ?? "none"}${payload.goal.target_name ? ` \u2192 ${payload.goal.target_name}` : ""}
+`);
+    }
+    if (payload.top_locations && payload.top_locations.length > 0) {
+      process.stdout.write("\nTop Locations:\n");
+      console.table(payload.top_locations.map((loc) => ({
+        location: loc.location_name ?? loc.location_id,
+        score: loc.score.toFixed(3),
+        visits: loc.visits
+      })));
+    }
+    if (payload.known_conditions && Object.keys(payload.known_conditions).length > 0) {
+      process.stdout.write("Known Conditions:\n");
+      for (const [condition, count] of Object.entries(payload.known_conditions)) {
+        process.stdout.write(`  ${condition}: ${count}
+`);
+      }
+    }
+    return;
+  }
+  if (isAgentSummaryArray(payload)) {
+    if (payload.length === 0) {
+      process.stdout.write("No agents in the world.\n");
+      return;
+    }
+    console.table(payload.map((a) => ({
+      id: a.id,
+      name: a.name,
+      location: a.location_name ?? a.location_id,
+      energy: `${(a.energy * 100).toFixed(0)}%`,
+      knowledge: a.knowledge_score.toFixed(2),
+      visited: a.visited_locations,
+      action: a.last_action,
+      reward: a.last_reward.toFixed(4),
+      policy: a.policy
+    })));
+    return;
+  }
   process.stdout.write(`${JSON.stringify(payload, null, 2)}
 `);
 }
@@ -6913,7 +7011,19 @@ function isWeather(value) {
   return isRecord(value) && typeof value.location_id === "number" && (typeof value.conditions === "string" || value.conditions === null);
 }
 function isAstronomy(value) {
-  return isRecord(value) && "is_daylight" in value && "moon_phase" in value;
+  return isRecord(value) && "is_daylight" in value && "sunrise" in value;
+}
+function isAgentSummary(value) {
+  return isRecord(value) && typeof value.id === "string" && typeof value.name === "string" && typeof value.knowledge_score === "number" && typeof value.energy === "number" && typeof value.last_action === "string";
+}
+function isAgentSummaryArray(value) {
+  return Array.isArray(value) && value.length > 0 && value.every(isAgentSummary);
+}
+function isAgentDetail(value) {
+  return isAgentSummary(value) && "top_locations" in value && "visited_places" in value;
+}
+function isAgentAnswer(value) {
+  return isRecord(value) && typeof value.agent_id === "string" && typeof value.question === "string" && typeof value.answer === "string" && typeof value.answer_confidence === "number";
 }
 
 // src/commands/world.ts
@@ -6959,6 +7069,41 @@ function registerWorldCommands(program2) {
     await withClient(this, async (client) => {
       const data = await client.controlSimulation("reset");
       printOutput(data, false);
+    });
+  });
+}
+
+// src/commands/agent.ts
+async function withClient2(command, run) {
+  const root = command.parent?.parent ?? command.parent ?? command;
+  const apiUrl = resolveApiUrl(root);
+  const client = new EarthlinkApiClient(apiUrl);
+  try {
+    await run(client);
+  } catch (error) {
+    process.stderr.write(`${EarthlinkApiClient.formatError(error)}
+`);
+    process.exitCode = 1;
+  }
+}
+function registerAgentCommands(program2) {
+  const agent = program2.command("agent").description("Agent inspection and interaction commands");
+  agent.command("list").description("List all agents with current state and learning progress").option("--json", "Print JSON output", false).action(async function action(options) {
+    await withClient2(this, async (client) => {
+      const data = await client.listAgents();
+      printOutput(data, options.json);
+    });
+  });
+  agent.command("show <agentId>").description("Show detailed state and knowledge for an agent").option("--json", "Print JSON output", false).action(async function action(agentId, options) {
+    await withClient2(this, async (client) => {
+      const data = await client.getAgent(agentId);
+      printOutput(data, options.json);
+    });
+  });
+  agent.command("ask <agentId> <question>").description("Ask an agent a question \u2014 answered from its own learned memory").option("--json", "Print JSON output", false).action(async function action(agentId, question, options) {
+    await withClient2(this, async (client) => {
+      const data = await client.askAgent(agentId, question);
+      printOutput(data, options.json);
     });
   });
 }
@@ -7013,7 +7158,7 @@ function registerStreamCommands(program2) {
 }
 
 // src/commands/location.ts
-async function withClient2(command, run) {
+async function withClient3(command, run) {
   const root = command.parent?.parent ?? command.parent ?? command;
   const apiUrl = resolveApiUrl(root);
   const client = new EarthlinkApiClient(apiUrl);
@@ -7035,7 +7180,7 @@ function registerLocationCommands(program2) {
       process.exitCode = 1;
       return;
     }
-    await withClient2(this, async (client) => {
+    await withClient3(this, async (client) => {
       const data = await client.listLocations({
         type: options.type,
         region: options.region,
@@ -7053,7 +7198,7 @@ function registerLocationCommands(program2) {
       process.exitCode = 1;
       return;
     }
-    await withClient2(this, async (client) => {
+    await withClient3(this, async (client) => {
       const data = await client.getLocation(locationId);
       printOutput(data, options.json);
     });
@@ -7071,7 +7216,7 @@ function registerLocationCommands(program2) {
       process.exitCode = 1;
       return;
     }
-    await withClient2(this, async (client) => {
+    await withClient3(this, async (client) => {
       const data = await client.getNearbyLocations(locationId);
       printOutput(data.slice(0, limit), options.json);
     });
@@ -7148,6 +7293,8 @@ Examples:
   earthlink ping
   earthlink world state
   earthlink world start
+  earthlink agent list
+  earthlink agent ask agent-01 "What do you know about London?"
   earthlink location list --limit 10
   earthlink weather show 10287
   earthlink stream world
@@ -7163,6 +7310,9 @@ Use "earthlink commands" for a compact command list.
         "  earthlink world state",
         "  earthlink world time",
         "  earthlink world start|pause|reset",
+        "  earthlink agent list",
+        "  earthlink agent show <agentId>",
+        '  earthlink agent ask <agentId> "question"',
         "  earthlink location list --limit 10",
         "  earthlink location show <id>",
         "  earthlink location nearby <id> --limit 5",
@@ -7201,6 +7351,7 @@ Use "earthlink commands" for a compact command list.
     }
   });
   registerWorldCommands(program2);
+  registerAgentCommands(program2);
   registerLocationCommands(program2);
   registerWeatherCommands(program2);
   registerAstronomyCommands(program2);

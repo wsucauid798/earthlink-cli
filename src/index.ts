@@ -5,6 +5,7 @@ import { EarthlinkApiClient } from "./http/client";
 import { resolveApiUrl } from "./config";
 import { printOutput } from "./output/format";
 import { registerWorldCommands } from "./commands/world";
+import { registerAgentCommands } from "./commands/agent";
 import { registerStreamCommands } from "./commands/stream";
 import { registerLocationCommands } from "./commands/location";
 import { registerWeatherCommands } from "./commands/weather";
@@ -30,6 +31,8 @@ Examples:
   earthlink ping
   earthlink world state
   earthlink world start
+  earthlink agent list
+  earthlink agent ask agent-01 "What do you know about London?"
   earthlink location list --limit 10
   earthlink weather show 10287
   earthlink stream world
@@ -49,6 +52,9 @@ Use "earthlink commands" for a compact command list.
           "  earthlink world state",
           "  earthlink world time",
           "  earthlink world start|pause|reset",
+          "  earthlink agent list",
+          "  earthlink agent show <agentId>",
+          '  earthlink agent ask <agentId> "question"',
           "  earthlink location list --limit 10",
           "  earthlink location show <id>",
           "  earthlink location nearby <id> --limit 5",
@@ -92,6 +98,7 @@ Use "earthlink commands" for a compact command list.
     });
 
   registerWorldCommands(program);
+  registerAgentCommands(program);
   registerLocationCommands(program);
   registerWeatherCommands(program);
   registerAstronomyCommands(program);

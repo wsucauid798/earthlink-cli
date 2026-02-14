@@ -1,4 +1,7 @@
 import {
+  AgentAnswer,
+  AgentDetail,
+  AgentSummary,
   ApiVersion,
   Astronomy,
   Location,
@@ -81,6 +84,19 @@ export class EarthlinkApiClient {
 
   async getAstronomy(locationId: number): Promise<Astronomy | null> {
     return this.request<Astronomy | null>(`/api/astronomy/${locationId}`);
+  }
+
+  async listAgents(): Promise<AgentSummary[]> {
+    return this.request<AgentSummary[]>("/api/agents");
+  }
+
+  async getAgent(agentId: string): Promise<AgentDetail> {
+    return this.request<AgentDetail>(`/api/agents/${encodeURIComponent(agentId)}`);
+  }
+
+  async askAgent(agentId: string, question: string): Promise<AgentAnswer> {
+    const query = new URLSearchParams({ question });
+    return this.request<AgentAnswer>(`/api/agents/${encodeURIComponent(agentId)}/ask?${query.toString()}`);
   }
 
   private async request<T>(endpoint: string, init?: RequestInit): Promise<T> {
