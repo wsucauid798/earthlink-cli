@@ -64,3 +64,7 @@ Resolution order:
 2. `EARTHLINK_API_URL`
 3. default value
 
+## License
+
+[MIT](LICENSE)
+
